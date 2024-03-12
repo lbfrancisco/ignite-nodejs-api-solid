@@ -1,6 +1,7 @@
-import { prisma } from '@/lib/prisma'
-import { PrismaUsersRepository } from '@/repositories/prisma-users-repository'
+import { UserRepository } from '@/repositories/users-repository'
 import { hash } from 'bcryptjs'
+import { EmailAlreadyInUseError } from './errors/email-already-in-use-error'
+import { User } from '@prisma/client'
 
 interface RegisterUseCaseRequest {
   name: string
@@ -8,28 +9,32 @@ interface RegisterUseCaseRequest {
   password: string
 }
 
-export async function registerUseCase({
-  name,
-  email,
-  password,
-}: RegisterUseCaseRequest) {
-  const userWithSameEmail = await prisma.user.findUnique({
-    where: {
-      email,
-    },
-  })
+interface RegisterUseCaseResponse {
+  user: User
+}
 
-  if (userWithSameEmail) {
-    throw new Error('E-mail already in use.')
-  }
+export class RegisterUseCase {
+  constructor(private usersRepository: UserRepository) {}
 
-  const passwordHash = await hash(password, 6)
-
-  const prismaUsersRepository = new PrismaUsersRepository()
-
-  await prismaUsersRepository.create({
+  async run({
     name,
     email,
-    password_hash: passwordHash,
-  })
+    password,
+  }: RegisterUseCaseRequest): Promise<RegisterUseCaseResponse> {
+    const userWithSameEmail = await this.usersRepository.findByEmail(email)
+
+    if (userWithSameEmail) {
+      throw new EmailAlreadyInUseError()
+    }
+
+    const passwordHash = await hash(password, 6)
+
+    const user = await this.usersRepository.create({
+      name,
+      email,
+      password_hash: passwordHash,
+    })
+
+    return { user }
+  }
 }
